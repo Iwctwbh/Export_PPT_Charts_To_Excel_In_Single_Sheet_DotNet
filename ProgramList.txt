@@ -1,0 +1,172 @@
+using Aspose.Cells;
+using Aspose.Slides;
+using Aspose.Slides.Charts;
+
+Console.WriteLine("For Grape");
+
+// Licensing
+Aspose.Cells.License licenseCells = new Aspose.Cells.License();
+
+if (System.IO.File.Exists("Aspose.Total.lic"))
+{
+    using (Stream stream = System.IO.File.OpenRead("Aspose.Total.lic"))
+    {
+        licenseCells.SetLicense(stream);
+    }
+}
+
+HashSet<int> unneededSlides = new HashSet<int>();
+int groupCount = 1;
+int columnChartCount = 1000;
+
+if (System.IO.File.Exists("unneededSlides.ini"))
+{
+    // 打开文件流
+    using (StreamReader reader = new StreamReader("unneededSlides.ini"))
+    {
+        // 逐行读取文件内容
+        string line;
+        while ((line = reader.ReadLine()) != null)
+        {
+            if (line.Contains("-"))
+            {
+                for (int i = Convert.ToInt32(line.Split('-').FirstOrDefault()); i <= Convert.ToInt32(line.Split('-').LastOrDefault()); ++i)
+                {
+                    unneededSlides.Add(i);
+                }
+            }
+            else
+            {
+                unneededSlides.Add(Convert.ToInt32(line));
+            }
+        }
+    }
+}
+
+if (System.IO.File.Exists("groupCount.ini"))
+{
+    // 打开文件流
+    using (StreamReader reader = new StreamReader("groupCount.ini"))
+    {
+        // 逐行读取文件内容
+        string line;
+        while ((line = reader.ReadLine()) != null)
+        {
+            groupCount = Convert.ToInt32(line);
+        }
+    }
+}
+
+if (System.IO.File.Exists("columnChartCount.ini"))
+{
+    // 打开文件流
+    using (StreamReader reader = new StreamReader("columnChartCount.ini"))
+    {
+        // 逐行读取文件内容
+        string line;
+        while ((line = reader.ReadLine()) != null)
+        {
+            columnChartCount = Convert.ToInt32(line);
+        }
+    }
+}
+
+string folderPath = Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location);
+string[] fileNames = Directory.GetFiles(folderPath).Select(Path.GetFileName).Where(w => w.EndsWith(".pptx")).ToArray();
+
+foreach (string fileName in fileNames)
+{
+    // 加载 PPT 文件
+    Console.WriteLine($"加载{fileName}文件。Loading...");
+
+    using (var presentation = new Presentation(Path.Combine(fileName)))
+    {
+
+        // 创建一个新的 Excel 工作簿
+        var workbook = new Workbook();
+        // 获取第一个工作表
+        var worksheet = workbook.Worksheets[0];
+
+        int rowCount = 0;
+        int rowCountTemp = 0;
+        int columnCount = 0;
+        int columnCountTemp = 0;
+        const int MAXROWCOUNT = 100;
+        const int CHECKMAXROWCOUNT = 100;
+        const int MAXCOLUMNCOUNT = 1000;
+
+        // 循环遍历所有幻灯片
+        foreach (var slide in presentation.Slides)
+        {
+            if (unneededSlides.Contains(slide.SlideNumber))
+            {
+                Console.WriteLine($"跳过第{slide.SlideNumber}页幻灯片。");
+                continue;
+            }
+            // 循环遍历幻灯片上的所有形状
+            foreach (var shape in slide.Shapes)
+            {
+                // 检查形状是否为图表
+                if (shape is IChart)
+                {
+                    worksheet.Cells[rowCount, 0].Value = slide.SlideNumber;
+                    Console.WriteLine($"遍历第{slide.SlideNumber}页幻灯片。");
+                    // 获取图表对象
+                    var chart = (IChart)shape;
+
+                    // 获取图表数据
+                    var chartData = chart.ChartData;
+
+                    // 处理图表数据
+                    var chartDataWorkbook = chartData.ChartDataWorkbook;
+
+                    // 循环遍历 chartDataWorkSheet 中的所有项
+                    for (rowCountTemp = 0; rowCountTemp < MAXROWCOUNT; ++rowCountTemp)
+                    {
+                        bool flag = false;
+                        for (int i = 0; i < CHECKMAXROWCOUNT; ++i)
+                        {
+                            if (chartDataWorkbook.GetCell(0, rowCountTemp, i).Value != null)
+                            {
+                                flag = true;
+                                break;
+                            }
+                        }
+                        if (!flag)
+                        {
+                            break;
+                        }
+
+                        for (columnCountTemp = 1; columnCountTemp < columnChartCount + 2; ++columnCountTemp)
+                        {
+                            // 获取单元格的值
+                            var cellValue = chartDataWorkbook.GetCell(0, rowCountTemp, columnCountTemp - 1).Value;
+
+                            // check cellValue is number
+                            if (cellValue != null)
+                            {
+                                // check cellValue is number
+                                double num;
+                                if (!double.TryParse(Convert.ToString(cellValue), out num))
+                                {
+                                    break;
+                                }
+                                // 将值赋给工作表的对应单元格
+                                worksheet.Cells[(rowCountTemp < groupCount ? 0 : rowCountTemp - groupCount) + rowCount, columnCountTemp + columnCount].Value = cellValue;
+                            }
+                        }
+                        columnCount += columnChartCount;
+                    }
+                    columnCount = 0;
+                    rowCount += 1;
+                }
+            }
+        }
+
+        worksheet.AutoFitColumns();
+        string fileSaveName = "Charts" + fileName.Substring(0, fileName.Length - 5) + ".xlsx";
+        workbook.Save(fileSaveName);
+        Console.WriteLine($"导出到{fileSaveName}!");
+    }
+}
+Console.WriteLine("Complete!");
